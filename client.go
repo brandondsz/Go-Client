@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -9,6 +11,30 @@ import (
 )
 
 func main() {
+
+	// Load client cert
+	cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Load CA cert
+	caCert, err := ioutil.ReadFile("server.crt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	// Setup HTTPS client
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caCertPool,
+	}
+	tlsConfig.BuildNameToCertificate()
+	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	client := &http.Client{Transport: transport}
+
 	//Small dataset for testing all reports. Also assumming all devices move in a straight line(north)
 	//data points :			1-10
 	//Device-1 speed	 	0
@@ -20,7 +46,7 @@ func main() {
 
 	WriteDatePoint := func(device, speed string) {
 		for i := 1; i <= 10; i++ {
-			res, err := http.PostForm("http://localhost:3000/addData",
+			_, err := client.PostForm("https://localhost:3000/addData",
 				url.Values{
 					"device_id": {device},
 					"latitude":  {"5.44991" + fmt.Sprintf("%d", (i*5))},
@@ -33,16 +59,10 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			output, err := ioutil.ReadAll(res.Body)
-			res.Body.Close()
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf("%s", output)
+
 		}
 
 	}
-
 	WriteDatePoint("device-1", "0")
 	WriteDatePoint("device-2", "0")
 	WriteDatePoint("device-3", "70")
